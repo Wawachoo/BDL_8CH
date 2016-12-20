@@ -17,9 +17,12 @@ class Engine(bdl.engine.Engine):
 
     @staticmethod
     def get_repo_name(url, **kwargs):
-        req = requests.get(url)
-        tree = etree.fromstring(req.text, parser=etree.HTMLParser())
-        return tree.xpath(".//*/span[@class='subject']")[0].text
+        try:
+            req = requests.get(url)
+            tree = etree.fromstring(req.text, parser=etree.HTMLParser())
+            return tree.xpath(".//*/span[@class='subject']")[0].text
+        except Exception:
+            return None
 
     @staticmethod
     def is_reachable(url, **kwargs):
@@ -68,10 +71,11 @@ class Engine(bdl.engine.Engine):
     def set_item_metadata(self, item, post_id=None):
         """Set an item's metadata.
         """
-        item.set_metadata({"thread_section": self.config["section"],
-                           "thread_name": self.config["name"],
-                           "thread_id": self.config["identifier"],
-                           "post_id": post_id})
+        if item is not None:
+            item.set_metadata({"thread_section": self.config["section"],
+                               "thread_name": self.config["name"],
+                               "thread_id": self.config["identifier"],
+                               "post_id": post_id})
 
     def list_files(self, url):
         """Returns the files URL.
@@ -82,9 +86,13 @@ class Engine(bdl.engine.Engine):
                 self.name, "{}: {}".format(rep.status_code, rep.reason))
         tree = etree.fromstring(rep.text, etree.HTMLParser())
         results = []
+        # Find files in thread subjet,no only in replies.
+        for link in tree.xpath(".//div[@class='thread']/div[@class='files']//a[@target='_blank']"):
+            results.append(("root",  link.attrib["href"]))
         # First, list all posts with files.
         for post in tree.xpath(".//div[contains(@class, 'has-file')]"):
             # Extract all posts' images and yield a tuple with (post_id, image_url)
             for link in post.xpath(".//div[@class='files']//div[contains(@class, 'file')]//a[@target='_blank']"):
                 results.append((post.attrib["id"], link.attrib["href"]))
-        return results
+        # Remove duplicates and return.
+        return [ v for p, v in enumerate(results) if v[1] not in [ url for pos, url in results[0:results.index(v, p)] ] ]
